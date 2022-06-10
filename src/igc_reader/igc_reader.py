@@ -8,10 +8,10 @@ from geojson import Feature, Point
 
 
 class read_igc:
-	def __init__(self, file_path):
+	def __init__(self, file_string):
 		self.log_entries = []
 		self.unread_entries = []
-		self.file_path = file_path
+		self.file_string = file_string
 		self.flight_recorder = None
 		self.positions = Positions()
 		self.task = Task()
@@ -19,14 +19,17 @@ class read_igc:
 
 	@classmethod
 	def from_file(cls, file_path):
-		return cls(file_path)
+		if not is_igc(file_path):
+			return
+		file_string = open(file_path, "r")
+		return cls(file_string)
+
+	@classmethod
+	def from_file_string(cls, file_string):
+		return cls(file_string)
 
 	def read_igc(self):
-		if not self.is_igc():
-			return
-		f = open(self.file_path, "r")
-		logging.debug(f'Reading IGC file: {self.file_path}.')
-		for line_number, line in tqdm(enumerate(f.readlines())):
+		for line_number, line in tqdm(enumerate(self.file_string.readlines())):
 			match line[0]:
 				case 'A':  # FR manufacturer and identification
 					self.read_a_record(line)
@@ -54,13 +57,6 @@ class read_igc:
 					self.read_l_record(line)
 				case _:  # M,N spare
 					logging.debug(f'Invalid entry on line {line_number}')
-
-	def is_igc(self):
-		if not self.file_path.lower().endswith('.igc'):
-			logging.warning(f'{self.file_path} is not a .igc file.')
-			return False
-		else:
-			return True
 
 	def read_a_record(self, line):
 		manufacturer = flight_recorder(line[1:4])
@@ -156,8 +152,14 @@ class read_igc:
 			coordinates.append([self.positions.longitude[p], self.positions.latitude[p], self.positions.gps_alt[p]])
 		return coordinates
 
+	def is_igc(file_path):
+		if not file_path.lower().endswith('.igc'):
+			logging.warning(f'{file_path} is not a .igc file.')
+			return False
+		else:
+			return True
 
-def get_coordinates(file_path):
+def get_coordinates(file_path, accuracy=4):
 	f = open(file_path, "r")
 	coordinates = []
 	logging.info(f'Reading coordinates from IGC file: {file_path}.')
@@ -174,7 +176,7 @@ def get_coordinates(file_path):
 				altitude = float(line[31:35])
 				latitude = lat_deg + lat_min / 60
 				longitude = lon_deg + lon_min / 60
-				coordinates.append([longitude, latitude, altitude])
+				coordinates.append([round(longitude, 10), round(latitude, 10), altitude])
 
 		logging.debug(f'Decoded {file_path}.')
 	except:
@@ -182,13 +184,12 @@ def get_coordinates(file_path):
 	return coordinates
 
 
-def get_heatmap_points(file_path):
+def get_heatmap_points(file_path, accuracy=4, interval=10):
 	points = []
-	coordinates = get_coordinates(file_path)
+	coordinates = get_coordinates(file_path, accuracy)
 	if not coordinates:
 		return
-	print(coordinates[10])
-	for i in range(0, len(coordinates), 10):
+	for i in range(0, len(coordinates), interval):
 		points.append(Feature(geometry=Point(coordinates=tuple(coordinates[i]))))
 	return points
 
