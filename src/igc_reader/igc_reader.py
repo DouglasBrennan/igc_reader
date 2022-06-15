@@ -6,6 +6,7 @@ import pandas as pd
 
 from geojson import Feature, Point
 
+logger = logging.getLogger('read_igc')
 
 class read_igc:
 	def __init__(self, file_string):
@@ -30,6 +31,8 @@ class read_igc:
 
 	def read_igc(self):
 		for line_number, line in tqdm(enumerate(self.file_string.readlines())):
+			if type(line) == bytes:
+				line = line.decode('utf-8')
 			match line[0]:
 				case 'A':  # FR manufacturer and identification
 					self.read_a_record(line)
@@ -56,7 +59,7 @@ class read_igc:
 				case 'L':  # Logbook / comments
 					self.read_l_record(line)
 				case _:  # M,N spare
-					logging.debug(f'Invalid entry on line {line_number}')
+					logging.debug(f'Invalid entry on line {line_number}: {line}')
 
 	def read_a_record(self, line):
 		manufacturer = flight_recorder(line[1:4])
@@ -114,7 +117,10 @@ class read_igc:
 	def read_h_record(self, line):
 		match line[2:5]:
 			case 'DTE':
-				self.date = date(day=int(line[5:7]), month=int(line[7:9]), year=(2000 + int(line[9:11])))
+				if line[5:10] == 'DATE:':
+					self.date = date(day=int(line[11:13]), month=int(line[13:15]), year=(2000 + int(line[15:17])))
+				else:
+					self.date = date(day=int(line[5:7]), month=int(line[7:9]), year=(2000 + int(line[9:11])))
 			case 'PLT':
 				self.pilot = line[19:-1]
 			case 'GTY':
@@ -152,12 +158,12 @@ class read_igc:
 			coordinates.append([self.positions.longitude[p], self.positions.latitude[p], self.positions.gps_alt[p]])
 		return coordinates
 
-	def is_igc(file_path):
-		if not file_path.lower().endswith('.igc'):
-			logging.warning(f'{file_path} is not a .igc file.')
-			return False
-		else:
-			return True
+def is_igc(file_path):
+	if not file_path.lower().endswith('.igc'):
+		logging.warning(f'{file_path} is not a .igc file.')
+		return False
+	else:
+		return True
 
 def get_coordinates(file_path, accuracy=4):
 	f = open(file_path, "r")
