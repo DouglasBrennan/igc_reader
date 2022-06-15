@@ -118,7 +118,7 @@ class read_igc:
 		match line[2:5]:
 			case 'DTE':
 				if line[5:10] == 'DATE:':
-					self.date = date(day=int(line[11:13]), month=int(line[13:15]), year=(2000 + int(line[15:17])))
+					self.date = date(day=int(line[10:12]), month=int(line[12:14]), year=(2000 + int(line[14:16])))
 				else:
 					self.date = date(day=int(line[5:7]), month=int(line[7:9]), year=(2000 + int(line[9:11])))
 			case 'PLT':
