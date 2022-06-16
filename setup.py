@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
 	name='igc_reader',
-	version='0.1.5',
+	version='0.1.6',
 	license='MIT',
 	author='Douglas Brennan',
 	author_email='douglas.brennan@me.com',

@@ -277,9 +277,10 @@ class Track:
 		return df
 
 	def get_duration(self):
-		first = self.timestamp[0]
-		last = self.timestamp[-1]
-		return last - first
+		first = datetime.combine(date.min, self.timestamp[0])
+		last = datetime.combine(date.min, self.timestamp[-1])
+		duration = last - first
+		return (datetime.min + duration).time()
 
 	def get_track_length(self):
 		distance = 0
