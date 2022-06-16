@@ -5,8 +5,10 @@ from tqdm import tqdm
 import pandas as pd
 
 from geojson import Feature, Point
+from utils import haversine_alt
 
 logger = logging.getLogger('read_igc')
+
 
 class read_igc:
 	def __init__(self, file_string):
@@ -14,9 +16,11 @@ class read_igc:
 		self.unread_entries = []
 		self.file_string = file_string
 		self.flight_recorder = None
-		self.positions = Positions()
+		self.track = Track()
 		self.task = Task()
+		self.infos = FlightInfos()
 		self.read_igc()
+		self.calculate_parameters()
 
 	@classmethod
 	def from_file(cls, file_path):
@@ -73,7 +77,7 @@ class read_igc:
 		longitude = float(line[15:18]) + float(f'{line[18:20]}.{line[20:23]}') / 60
 		p_alt = int(line[25:30])
 		gps_alt = int(line[30:35])
-		self.positions.add_position(timestamp, Position(latitude, longitude), p_alt, gps_alt)
+		self.track.add_position(timestamp, Position(latitude, longitude), p_alt, gps_alt)
 
 	def read_c_record(self, line):
 		if not self.task.is_initialized:
@@ -117,22 +121,19 @@ class read_igc:
 	def read_h_record(self, line):
 		match line[2:5]:
 			case 'DTE':
-				if line[5:10] == 'DATE:':
-					self.date = date(day=int(line[10:12]), month=int(line[12:14]), year=(2000 + int(line[14:16])))
-				else:
-					self.date = date(day=int(line[5:7]), month=int(line[7:9]), year=(2000 + int(line[9:11])))
+				self.infos.set_date(line)
 			case 'PLT':
-				self.pilot = line[19:-1]
+				self.infos.set_pilot(line)
 			case 'GTY':
-				self.glider = line[16:-1]
+				self.infos.set_glider(line)
 			case 'GID':
-				self.glider_id = line[14:-1]
+				self.infos.set_glider_id(line)
 			case 'DTM':
-				self.gps_date = line[18:-1]
+				self.infos.set_gps_date(line)
 			case 'FTY':
-				self.logging_device = line[11:-1]
+				self.infos.set_logging_device(line)
 			case 'CCL':
-				self.competition_class = line[22:-1]
+				self.infos.set_competition_class(line)
 			case _:
 				logging.info(f'H Record {line} could not be interpreted.')
 				self.unread_entries.append(line)
@@ -154,9 +155,14 @@ class read_igc:
 
 	def get_coordinates(self):
 		coordinates = []
-		for p in range(self.positions.count):
-			coordinates.append([self.positions.longitude[p], self.positions.latitude[p], self.positions.gps_alt[p]])
+		for p in range(self.track.count):
+			coordinates.append([self.track.longitude[p], self.track.latitude[p], self.track.gps_alt[p]])
 		return coordinates
+
+	def calculate_parameters(self):
+		self.infos.duration = self.track.get_duration()
+		self.infos.track_distance = self.track.get_track_length()
+
 
 def is_igc(file_path):
 	if not file_path.lower().endswith('.igc'):
@@ -164,6 +170,7 @@ def is_igc(file_path):
 		return False
 	else:
 		return True
+
 
 def get_coordinates(file_path, accuracy=4):
 	f = open(file_path, "r")
@@ -182,7 +189,7 @@ def get_coordinates(file_path, accuracy=4):
 				altitude = float(line[31:35])
 				latitude = lat_deg + lat_min / 60
 				longitude = lon_deg + lon_min / 60
-				coordinates.append([round(longitude, 10), round(latitude, 10), altitude])
+				coordinates.append([round(longitude, accuracy), round(latitude, accuracy), altitude])
 
 		logging.debug(f'Decoded {file_path}.')
 	except:
@@ -243,7 +250,7 @@ class Position:
 		return True
 
 
-class Positions:
+class Track:
 	def __init__(self):
 		self.timestamp = []
 		self.latitude = []
@@ -268,6 +275,26 @@ class Positions:
 		df.p_altitude = self.p_alt
 		df.gps_altitude = self.gps_alt
 		return df
+
+	def get_duration(self):
+		first = self.timestamp[0]
+		last = self.timestamp[-1]
+		return last - first
+
+	def get_track_length(self):
+		distance = 0
+		lon1 = self.longitude[0]
+		lat1 = self.latitude[0]
+		alt1 = self.gps_alt[0]
+		for i in range(1, self.count):
+			lon2 = self.longitude[i]
+			lat2 = self.latitude[i]
+			alt2 = self.gps_alt[1]
+			distance += haversine_alt(lon1, lat1, alt1, lon2, lat2, alt2)
+			lon1 = lon2
+			lat1 = lat2
+			alt1 = alt2
+		return distance
 
 
 class Task:
@@ -316,12 +343,16 @@ class FlightInfos:
 		self.gps_date = None
 		self.logging_device = None
 		self.competition_class = None
+		self.duration = None
 
 	def __str__(self):
 		return f'{self.date}-{self.pilot.replace(" ", "")}'
 
 	def set_date(self, line):
-		self.date = date(day=int(line[5:7]), month=int(line[7:9]), year=(2000 + line([9 - 11])))
+		if line[5:10] == 'DATE:':
+			self.date = date(day=int(line[10:12]), month=int(line[12:14]), year=(2000 + int(line[14:16])))
+		else:
+			self.date = date(day=int(line[5:7]), month=int(line[7:9]), year=(2000 + int(line[9:11])))
 
 	def set_pilot(self, line):
 		self.pilot = line[19:-1]
